@@ -1,0 +1,136 @@
+/*
+ *      Copyright (C) 2007-2015 Team XBMC
+ *      http://xbmc.org
+ *
+ *  This Program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License as published by
+ *  the Free Software Foundation; either version 2, or (at your option)
+ *  any later version.
+ *
+ *  This Program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with XBMC; see the file COPYING.  If not, see
+ *  <http://www.gnu.org/licenses/>.
+ *
+ */
+#pragma once
+
+#include "guilib/TransformMatrix.h"
+#include "ShaderFormats.h"
+#include "GLSLOutput.h"
+#include "guilib/Shader.h"
+#include "cores/VideoSettings.h"
+
+void CalculateYUVMatrix(TransformMatrix &matrix
+                        , unsigned int  flags
+                        , EShaderFormat format
+                        , float         black
+                        , float         contrast
+                        , bool          limited);
+
+namespace Shaders {
+
+class BaseYUV2RGBGLSLShader : public CGLSLShaderProgram
+{
+public:
+  BaseYUV2RGBGLSLShader(bool rect, unsigned flags, EShaderFormat format, bool stretch, GLSLOutput *output=nullptr);
+  virtual ~BaseYUV2RGBGLSLShader();
+
+  void SetField(int field) { m_field  = field; }
+  void SetWidth(int w) { m_width  = w; }
+  void SetHeight(int h) { m_height = h; }
+
+  void SetBlack(float black) { m_black    = black; }
+  void SetContrast(float contrast) { m_contrast = contrast; }
+  void SetNonLinStretch(float stretch) { m_stretch = stretch; }
+
+  void SetConvertFullColorRange(bool convertFullRange) { m_convertFullRange = convertFullRange; }
+
+  GLint GetVertexLoc() { return m_hVertex; }
+  GLint GetYcoordLoc() { return m_hYcoord; }
+  GLint GetUcoordLoc() { return m_hUcoord; }
+  GLint GetVcoordLoc()  { return m_hVcoord; }
+
+  void SetMatrices(GLfloat *p, GLfloat *m) { m_proj = p; m_model = m; }
+  void SetAlpha(GLfloat alpha)  { m_alpha = alpha; }
+
+protected:
+
+  void OnCompiledAndLinked() override;
+  bool OnEnabled() override;
+  void OnDisabled() override;
+  void Free();
+
+  bool m_convertFullRange;
+  unsigned m_flags;
+  EShaderFormat m_format;
+  int m_width;
+  int m_height;
+  int m_field;
+
+  float m_black;
+  float m_contrast;
+  float m_stretch;
+
+  GLfloat *m_proj = nullptr;
+  GLfloat *m_model = nullptr;
+  GLfloat  m_alpha = 1.0f;
+
+  std::string m_defines;
+
+  Shaders::GLSLOutput *m_glslOutput = nullptr;
+
+  // pixel shader attribute handles
+  GLint m_hYTex = -1;
+  GLint m_hUTex = -1;
+  GLint m_hVTex = -1;
+  GLint m_hMatrix = -1;
+  GLint m_hStretch = -1;
+  GLint m_hStep = -1;
+
+  // vertex shader attribute handles
+  GLint m_hVertex = -1;
+  GLint m_hYcoord = -1;
+  GLint m_hUcoord = -1;
+  GLint m_hVcoord = -1;
+  GLint m_hProj = -1;
+  GLint m_hModel = -1;
+  GLint m_hAlpha = -1;
+};
+
+class YUV2RGBProgressiveShader : public BaseYUV2RGBGLSLShader
+{
+public:
+  YUV2RGBProgressiveShader(bool rect,
+                           unsigned flags,
+                           EShaderFormat format,
+                           bool stretch,
+                           GLSLOutput *output);
+};
+
+class YUV2RGBFilterShader4 : public BaseYUV2RGBGLSLShader
+{
+public:
+  YUV2RGBFilterShader4(bool rect,
+                       unsigned flags,
+                       EShaderFormat format,
+                       bool stretch,
+                       ESCALINGMETHOD method,
+                       GLSLOutput *output);
+  ~YUV2RGBFilterShader4() override;
+
+protected:
+  void OnCompiledAndLinked() override;
+  bool OnEnabled() override;
+
+  GLuint m_kernelTex = 0;
+  GLint m_hKernTex = -1;
+  ESCALINGMETHOD m_scaling = VS_SCALINGMETHOD_LANCZOS3_FAST;
+};
+
+} // end namespace
+
