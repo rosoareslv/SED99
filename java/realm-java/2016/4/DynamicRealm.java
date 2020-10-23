@@ -1,0 +1,277 @@
+/*
+ * Copyright 2015 Realm Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package io.realm;
+
+import android.os.Looper;
+
+import io.realm.exceptions.RealmException;
+import io.realm.exceptions.RealmIOException;
+import io.realm.internal.Table;
+import io.realm.internal.TableView;
+import io.realm.internal.log.RealmLog;
+import rx.Observable;
+
+/**
+ * DynamicRealm is a dynamic variant of {@link io.realm.Realm}. This means that all access to data and/or queries are
+ * done using string based class names instead of class type references.
+ *
+ * This is useful during migrations or when working with string-based data like CSV or XML files.
+ *
+ * The same {@link io.realm.RealmConfiguration} can be used to open a Realm file in both dynamic and typed mode, but
+ * modifying the schema while having both a typed and dynamic version open is highly discouraged and will most likely
+ * crash the typed Realm. During migrations only a DynamicRealm will be open.
+ *
+ * Dynamic Realms do not enforce schemas or schema versions and {@link RealmMigration} code is not used even if it has
+ * been defined in the {@link RealmConfiguration}.
+ *
+ * This means that the schema is not created or validated until a Realm has been opened in typed mode, so if a Realm
+ * file is opened in dynamic mode first it will not contain any information about classes and fields, and any queries
+ * for classes defined by the schema will fail.
+ *
+ * @see Realm
+ * @see RealmSchema
+ */
+public final class DynamicRealm extends BaseRealm {
+
+    private DynamicRealm(RealmConfiguration configuration, boolean autoRefresh) {
+        super(configuration, autoRefresh);
+    }
+
+    /**
+     * Realm static constructor that returns a dynamic variant of the Realm instance defined by provided
+     * {@link io.realm.RealmConfiguration}. Dynamic Realms do not care about schemaVersion and schemas, so opening a
+     * DynamicRealm will never trigger a migration.
+     *
+     * @return the DynamicRealm defined by the configuration.
+     * @see RealmConfiguration for details on how to configure a Realm.
+     * @throws RealmIOException if an error happened when accessing the underlying Realm file.
+     * @throws IllegalArgumentException if {@code configuration} argument is {@code null}.
+     */
+    public static DynamicRealm getInstance(RealmConfiguration configuration) {
+        if (configuration == null) {
+            throw new IllegalArgumentException("A non-null RealmConfiguration must be provided");
+        }
+        return RealmCache.createRealmOrGetFromCache(configuration, DynamicRealm.class);
+    }
+
+    /**
+     * Instantiates and adds a new object to the Realm.
+     *
+     * @param className the class name of the object to create.
+     * @return the new object.
+     * @throws RealmException if the object could not be created.
+     */
+    public DynamicRealmObject createObject(String className) {
+        checkIfValid();
+        Table table = schema.getTable(className);
+        long rowIndex = table.addEmptyRow();
+        return get(DynamicRealmObject.class, className, rowIndex);
+    }
+
+    /**
+     * Creates an object with a given primary key. Classes without a primary key defined must use
+     * {@link #createObject(String)}} instead.
+     *
+     * @return the new object. All fields will have default values for their type, except for the
+     * primary key field which will have the provided value.
+     * @throws RealmException if object could not be created due to the primary key being invalid.
+     * @throws IllegalStateException If the model clazz does not have an primary key defined.
+     * @throws IllegalArgumentException if the {@code primaryKeyValue} doesn't have a value that can be converted to the
+     *                                  expectd value.
+     */
+    public DynamicRealmObject createObject(String className, Object primaryKeyValue) {
+        Table table = schema.getTable(className);
+        long index = table.addEmptyRowWithPrimaryKey(primaryKeyValue);
+        DynamicRealmObject dynamicRealmObject = new DynamicRealmObject(this, table.getCheckedRow(index));
+        handlerController.addToRealmObjects(dynamicRealmObject);
+        return dynamicRealmObject;
+    }
+
+    /**
+     * Returns a RealmQuery, which can be used to query for the provided class.
+     *
+     * @param className The class of the object which is to be queried for.
+     * @return a RealmQuery, which can be used to query for specific objects of provided type.
+     * @see io.realm.RealmQuery
+     * @throws IllegalArgumentException if the class doesn't exist.
+     */
+    public RealmQuery<DynamicRealmObject> where(String className) {
+        checkIfValid();
+        if (!sharedGroupManager.hasTable(Table.TABLE_PREFIX + className)) {
+            throw new IllegalArgumentException("Class does not exist in the Realm so it cannot be queried: " + className);
+        }
+        return RealmQuery.createDynamicQuery(this, className);
+    }
+
+    /**
+     * Removes all objects of the specified class.
+     *
+     * DEPRECATED: Use {@link #delete(String)} instead.
+     *
+     * @param className the class for which all objects should be removed.
+     */
+    @Deprecated
+    public void clear(String className) {
+        delete(className);
+    }
+
+    /**
+     * Deletes all objects of the specified class from the Realm.
+     *
+     * @param className the class for which all objects should be removed.
+     */
+    public void delete(String className) {
+        checkIfValid();
+        schema.getTable(className).clear();
+    }
+
+    /**
+     * Executes a given transaction on the DynamicRealm. {@link #beginTransaction()} and
+     * {@link #commitTransaction()} will be called automatically. If any exception is thrown
+     * during the transaction {@link #cancelTransaction()} will be called instead of {@link #commitTransaction()}.
+     *
+     * @param transaction {@link io.realm.DynamicRealm.Transaction} to execute.
+     * @throws IllegalArgumentException if the {@code transaction} is {@code null}.
+     */
+    public void executeTransaction(Transaction transaction) {
+        if (transaction == null) {
+            throw new IllegalArgumentException("Transaction should not be null");
+        }
+
+        beginTransaction();
+        try {
+            transaction.execute(this);
+            commitTransaction();
+        } catch (RuntimeException e) {
+            if (isInTransaction()) {
+                cancelTransaction();
+            } else {
+                RealmLog.w("Could not cancel transaction, not currently in a transaction.");
+            }
+            throw e;
+        }
+    }
+
+    /**
+     * DEPRECATED: Use {@code dynamicRealm.where(className).findAll()} instead.
+     */
+    @Deprecated
+    public RealmResults<DynamicRealmObject> allObjects(String className) {
+        return where(className).findAll();
+    }
+
+    /**
+     * DEPRECATED: Use {@code dynamicRealm.where(className).findAll(fieldName, sortOrder)} instead.
+     */
+    @Deprecated
+    public RealmResults<DynamicRealmObject> allObjectsSorted(String className, String fieldName, Sort sortOrder) {
+        checkIfValid();
+        Table table = schema.getTable(className);
+        long columnIndex = table.getColumnIndex(fieldName);
+        if (columnIndex < 0) {
+            throw new IllegalArgumentException(String.format("Field name '%s' does not exist.", fieldName));
+        }
+
+        TableView tableView = table.getSortedView(columnIndex, sortOrder);
+        return RealmResults.createFromDynamicTableOrView(this, tableView, className);
+    }
+
+
+    /**
+     * DEPRECATED: Use {@code dynamicRealm.where(className).findAll(fieldName1, sortOrder1, fieldName2, sortOrder2)} instead.
+     */
+    @Deprecated
+    public RealmResults<DynamicRealmObject> allObjectsSorted(String className, String fieldName1,
+                                                                    Sort sortOrder1, String fieldName2,
+                                                                    Sort sortOrder2) {
+        return allObjectsSorted(className, new String[]{fieldName1, fieldName2}, new Sort[]{sortOrder1,
+                sortOrder2});
+    }
+
+    /**
+     * DEPRECATED: Use {@code dynamicRealm.where(className).findAll(fieldNames[], sortOrders[])} instead.
+     */
+    @Deprecated
+    @SuppressWarnings("unchecked")
+    public RealmResults<DynamicRealmObject> allObjectsSorted(String className, String fieldNames[], Sort sortOrders[]) {
+        checkAllObjectsSortedParameters(fieldNames, sortOrders);
+        Table table = schema.getTable(className);
+
+        TableView tableView = doMultiFieldSort(fieldNames, sortOrders, table);
+        return RealmResults.createFromDynamicTableOrView(this, tableView, className);
+    }
+
+    /**
+     * Creates a {@link DynamicRealm} instance without checking the existence in the {@link RealmCache}.
+     *
+     * @return a {@link DynamicRealm} instance.
+     */
+    static DynamicRealm createInstance(RealmConfiguration configuration) {
+        boolean autoRefresh = Looper.myLooper() != null;
+        return new DynamicRealm(configuration, autoRefresh);
+    }
+
+    /**
+     * DEPRECATED: Use {@code dynamicRealm.where(className).distinct(fieldName)} instead.
+     */
+    @Deprecated
+    public RealmResults<DynamicRealmObject> distinct(String className, String fieldName) {
+        checkIfValid();
+        Table table = schema.getTable(className);
+        long columnIndex = RealmQuery.getAndValidateDistinctColumnIndex(fieldName, table);
+        TableView tableView = table.getDistinctView(columnIndex);
+        return RealmResults.createFromDynamicTableOrView(this, tableView, className);
+    }
+
+    /**
+     * DEPRECATED: Use {@code dynamicRealm.where(className).distinctAsync(fieldName)} instead.
+     */
+    @Deprecated
+    public RealmResults<DynamicRealmObject> distinctAsync(String className, String fieldName) {
+        checkIfValid();
+        return where(className).distinctAsync(fieldName);
+    }
+
+    /**
+     * DEPRECATED: Use {@code dynamicRealm.where(className).distinct(firstFieldName, remainingFieldNames)} instead.
+     */
+    @Deprecated
+    public RealmResults<DynamicRealmObject> distinct(String className, String firstFieldName, String... remainingFieldNames) {
+        checkIfValid();
+        return where(className).distinct(firstFieldName, remainingFieldNames);
+    }
+
+    /**
+     * {@inheritDoc}
+     */
+    @Override
+    public Observable<DynamicRealm> asObservable() {
+        return configuration.getRxFactory().from(this);
+    }
+
+    /**
+     * Encapsulates a Realm transaction.
+     * <p>
+     * Using this class will automatically handle {@link #beginTransaction()} and {@link #commitTransaction()}
+     * If any exception is thrown during the transaction {@link #cancelTransaction()} will be called
+     * instead of {@link #commitTransaction()}.
+     */
+    public interface Transaction {
+        void execute(DynamicRealm realm);
+    }
+}
+
