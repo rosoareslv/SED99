@@ -1,0 +1,23 @@
+#include <Functions/FunctionFactory.h>
+#include "arrayEnumerateRanked.h"
+#include "registerFunctionsArray.h"
+
+
+namespace DB
+{
+
+class FunctionArrayEnumerateDenseRanked : public FunctionArrayEnumerateRankedExtended<FunctionArrayEnumerateDenseRanked>
+{
+    using Base = FunctionArrayEnumerateRankedExtended<FunctionArrayEnumerateDenseRanked>;
+
+public:
+    static constexpr auto name = "arrayEnumerateDenseRanked";
+    using Base::create;
+};
+
+void registerFunctionArrayEnumerateDenseRanked(FunctionFactory & factory)
+{
+    factory.registerFunction<FunctionArrayEnumerateDenseRanked>();
+}
+
+}
