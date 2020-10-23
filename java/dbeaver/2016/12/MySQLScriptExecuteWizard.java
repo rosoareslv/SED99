@@ -1,0 +1,125 @@
+/*
+ * DBeaver - Universal Database Manager
+ * Copyright (C) 2010-2016 Serge Rieder (serge@jkiss.org)
+ * Copyright (C) 2011-2012 Eugene Fradkin (eugene.fradkin@gmail.com)
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (version 2)
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+
+package org.jkiss.dbeaver.ext.mysql.tools;
+
+import org.jkiss.dbeaver.ext.mysql.MySQLConstants;
+import org.jkiss.dbeaver.ext.mysql.MySQLDataSourceProvider;
+import org.jkiss.dbeaver.ext.mysql.MySQLMessages;
+import org.jkiss.dbeaver.ext.mysql.MySQLServerHome;
+import org.jkiss.dbeaver.ext.mysql.model.MySQLCatalog;
+import org.jkiss.dbeaver.ui.dialogs.tools.AbstractScriptExecuteWizard;
+import org.jkiss.dbeaver.utils.RuntimeUtils;
+import org.jkiss.utils.CommonUtils;
+
+import java.io.IOException;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+
+class MySQLScriptExecuteWizard extends AbstractScriptExecuteWizard<MySQLCatalog, MySQLCatalog> {
+
+    enum LogLevel {
+        Normal,
+        Verbose,
+        Debug
+    }
+
+    private LogLevel logLevel;
+    private boolean noBeep;
+
+    private boolean isImport;
+    private MySQLScriptExecuteWizardPageSettings mainPage;
+
+    public MySQLScriptExecuteWizard(MySQLCatalog catalog, boolean isImport)
+    {
+        super(Collections.singleton(catalog), isImport ? MySQLMessages.tools_script_execute_wizard_db_import : MySQLMessages.tools_script_execute_wizard_execute_script);
+        this.isImport = isImport;
+        this.logLevel = LogLevel.Normal;
+        this.noBeep = true;
+        this.mainPage = new MySQLScriptExecuteWizardPageSettings(this);
+    }
+
+    public LogLevel getLogLevel()
+    {
+        return logLevel;
+    }
+
+    public void setLogLevel(LogLevel logLevel)
+    {
+        this.logLevel = logLevel;
+    }
+
+    public boolean isImport()
+    {
+        return isImport;
+    }
+
+    @Override
+    public boolean isVerbose()
+    {
+        return logLevel == LogLevel.Verbose || logLevel == LogLevel.Debug;
+    }
+
+    @Override
+    public void addPages()
+    {
+        addPage(mainPage);
+        super.addPages();
+    }
+
+    @Override
+    public void fillProcessParameters(List<String> cmd, MySQLCatalog arg) throws IOException
+    {
+        String dumpPath = RuntimeUtils.getHomeBinary(getClientHome(), MySQLConstants.BIN_FOLDER, "mysql").getAbsolutePath(); //$NON-NLS-1$
+        cmd.add(dumpPath);
+        if (logLevel == LogLevel.Debug) {
+            cmd.add("--debug-info"); //$NON-NLS-1$
+        }
+        if (noBeep) {
+            cmd.add("--no-beep"); //$NON-NLS-1$
+        }
+    }
+
+    @Override
+    protected void setupProcessParameters(ProcessBuilder process) {
+        if (!CommonUtils.isEmpty(getToolUserPassword())) {
+            process.environment().put(MySQLConstants.ENV_VARIABLE_MYSQL_PWD, getToolUserPassword());
+        }
+    }
+
+    @Override
+    public MySQLServerHome findServerHome(String clientHomeId)
+    {
+        return MySQLDataSourceProvider.getServerHome(clientHomeId);
+    }
+
+    @Override
+    public Collection<MySQLCatalog> getRunInfo() {
+        return getDatabaseObjects();
+    }
+
+    @Override
+    protected List<String> getCommandLine(MySQLCatalog arg) throws IOException
+    {
+        List<String> cmd = MySQLToolScript.getMySQLToolCommandLine(this, arg);
+        cmd.add(arg.getName());
+        return cmd;
+    }
+}

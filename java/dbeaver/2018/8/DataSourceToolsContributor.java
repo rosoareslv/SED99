@@ -1,0 +1,127 @@
+/*
+ * DBeaver - Universal Database Manager
+ * Copyright (C) 2010-2017 Serge Rider (serge@jkiss.org)
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.jkiss.dbeaver.ui.actions.datasource;
+
+import org.eclipse.jface.action.*;
+import org.eclipse.jface.viewers.ISelection;
+import org.eclipse.jface.viewers.ISelectionProvider;
+import org.eclipse.jface.viewers.IStructuredSelection;
+import org.eclipse.ui.IWorkbenchPart;
+import org.eclipse.ui.IWorkbenchWindow;
+import org.jkiss.dbeaver.model.struct.DBSObject;
+import org.jkiss.dbeaver.registry.tools.ToolDescriptor;
+import org.jkiss.dbeaver.registry.tools.ToolGroupDescriptor;
+import org.jkiss.dbeaver.registry.tools.ToolsRegistry;
+import org.jkiss.dbeaver.ui.ActionUtils;
+import org.jkiss.dbeaver.ui.DBeaverIcons;
+import org.jkiss.dbeaver.ui.UIUtils;
+import org.jkiss.dbeaver.ui.actions.common.EmptyListAction;
+import org.jkiss.dbeaver.ui.actions.navigator.NavigatorActionExecuteTool;
+import org.jkiss.dbeaver.utils.RuntimeUtils;
+import org.jkiss.utils.CommonUtils;
+
+import java.util.*;
+
+public class DataSourceToolsContributor extends DataSourceMenuContributor
+{
+
+
+    private static final boolean SHOW_GROUPS_AS_SUBMENU = false;
+
+    @Override
+    protected void fillContributionItems(List<IContributionItem> menuItems)
+    {
+        IWorkbenchPart activePart = UIUtils.getActiveWorkbenchWindow().getActivePage().getActivePart();
+        if (activePart == null) {
+            return;
+        }
+        final ISelectionProvider selectionProvider = activePart.getSite().getSelectionProvider();
+        if (selectionProvider == null) {
+            return;
+        }
+        ISelection selection = selectionProvider.getSelection();
+        if (selection instanceof IStructuredSelection && !selection.isEmpty()) {
+            DBSObject selectedObject = RuntimeUtils.getObjectAdapter(((IStructuredSelection) selection).getFirstElement(), DBSObject.class);
+
+            if (selectedObject != null) {
+                List<ToolDescriptor> tools = ToolsRegistry.getInstance().getTools((IStructuredSelection) selection);
+                fillToolsMenu(menuItems, tools, selection);
+            }
+        }
+    }
+
+    private static void fillToolsMenu(List<IContributionItem> menuItems, List<ToolDescriptor> tools, ISelection selection)
+    {
+        boolean hasTools = false;
+        if (!CommonUtils.isEmpty(tools)) {
+            IWorkbenchWindow workbenchWindow = UIUtils.getActiveWorkbenchWindow();
+            if (workbenchWindow.getActivePage() != null) {
+                IWorkbenchPart activePart = workbenchWindow.getActivePage().getActivePart();
+                if (activePart != null) {
+                    Map<ToolGroupDescriptor, IMenuManager> groupsMap = new HashMap<>();
+                    Set<ToolGroupDescriptor> groupSet = new HashSet<>();
+                    for (ToolDescriptor tool : tools) {
+                        hasTools = true;
+                        IMenuManager parentMenu = null;
+                        if (tool.getGroup() != null) {
+                            if (SHOW_GROUPS_AS_SUBMENU) {
+                                parentMenu = getGroupMenu(menuItems, groupsMap, tool.getGroup());
+                            } else {
+                                if (!groupSet.contains(tool.getGroup())) {
+                                    groupSet.add(tool.getGroup());
+                                    menuItems.add(new Separator(tool.getGroup().getId()));
+                                }
+                            }
+                        }
+
+                        IAction action = ActionUtils.makeAction(
+                            new NavigatorActionExecuteTool(workbenchWindow, tool),
+                            activePart.getSite(),
+                            selection,
+                            tool.getLabel(),
+                            tool.getIcon() == null ? null : DBeaverIcons.getImageDescriptor(tool.getIcon()),
+                            tool.getDescription());
+                        if (parentMenu == null) {
+                            menuItems.add(new ActionContributionItem(action));
+                        } else {
+                            parentMenu.add(new ActionContributionItem(action));
+                        }
+                    }
+                }
+            }
+        }
+        if (!hasTools) {
+            menuItems.add(new ActionContributionItem(new EmptyListAction()));
+        }
+    }
+
+    private static IMenuManager getGroupMenu(List<IContributionItem> rootItems, Map<ToolGroupDescriptor, IMenuManager> groupsMap, ToolGroupDescriptor group) {
+        IMenuManager item = groupsMap.get(group);
+        if (item == null) {
+            item = new MenuManager(group.getLabel(), null, group.getId());
+            if (group.getParent() != null) {
+                IMenuManager parentMenu = getGroupMenu(rootItems, groupsMap, group.getParent());
+                parentMenu.add(item);
+            } else {
+                rootItems.add(item);
+            }
+        }
+        groupsMap.put(group, item);
+        return item;
+    }
+}

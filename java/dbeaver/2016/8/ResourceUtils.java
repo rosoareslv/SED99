@@ -1,0 +1,276 @@
+/*
+ * DBeaver - Universal Database Manager
+ * Copyright (C) 2010-2016 Serge Rieder (serge@jkiss.org)
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License (version 2)
+ * as published by the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ */
+package org.jkiss.dbeaver.ui.resources;
+
+import org.eclipse.core.resources.IFile;
+import org.eclipse.core.resources.IFolder;
+import org.eclipse.core.resources.IProject;
+import org.eclipse.core.resources.IResource;
+import org.eclipse.core.runtime.*;
+import org.jkiss.code.Nullable;
+import org.jkiss.dbeaver.DBeaverPreferences;
+import org.jkiss.dbeaver.Log;
+import org.jkiss.dbeaver.core.DBeaverCore;
+import org.jkiss.dbeaver.model.DBPDataSourceContainer;
+import org.jkiss.dbeaver.model.sql.SQLUtils;
+import org.jkiss.dbeaver.ui.editors.EditorUtils;
+import org.jkiss.dbeaver.utils.ContentUtils;
+import org.jkiss.dbeaver.utils.GeneralUtils;
+import org.jkiss.utils.ArrayUtils;
+import org.jkiss.utils.CommonUtils;
+
+import java.io.ByteArrayInputStream;
+import java.io.File;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * ResourceUtils
+ */
+public class ResourceUtils {
+
+    private static final Log log = Log.getLog(ResourceUtils.class);
+
+    public static final String SCRIPT_FILE_EXTENSION = "sql"; //$NON-NLS-1$
+
+    public static class ResourceInfo {
+        private final IResource resource;
+        private final File localFile;
+        private final DBPDataSourceContainer dataSource;
+        private final List<ResourceInfo> children;
+        private String description;
+
+        public ResourceInfo(IFile file, DBPDataSourceContainer dataSource) {
+            this.resource = file;
+            this.localFile = file.getLocation().toFile();
+            this.dataSource = dataSource;
+            this.children = null;
+        }
+        public ResourceInfo(IFolder folder) {
+            this.resource = folder;
+            this.localFile = folder.getLocation().toFile();
+            this.dataSource = null;
+            this.children = new ArrayList<>();
+        }
+        public ResourceInfo(File localFile, DBPDataSourceContainer dataSource) {
+            this.resource = null;
+            this.localFile = localFile;
+            this.dataSource = dataSource;
+            this.children = null;
+        }
+
+        public IResource getResource() {
+            return resource;
+        }
+
+        public File getLocalFile() {
+            return localFile;
+        }
+
+        public String getName() {
+            return resource != null ? resource.getName() : localFile.getName();
+        }
+
+        public DBPDataSourceContainer getDataSource() {
+            return dataSource;
+        }
+
+        public boolean isDirectory() {
+            return resource instanceof IFolder;
+        }
+        public List<ResourceInfo> getChildren() {
+            return children;
+        }
+
+        public String getDescription() {
+            if (description == null) {
+                description = getResourceDescription(resource);
+            }
+            return description;
+        }
+
+        @Override
+        public String toString() {
+            return getName();
+        }
+    }
+
+    public static String getResourceDescription(IResource resource) {
+        if (resource instanceof IFolder) {
+            return "";
+        } else if (resource instanceof IFile && SCRIPT_FILE_EXTENSION.equals(resource.getFileExtension())) {
+            String description = SQLUtils.getScriptDescription((IFile) resource);
+            if (CommonUtils.isEmptyTrimmed(description)) {
+                description = "<empty>";
+            }
+            return description;
+        } else {
+            return "";
+        }
+    }
+
+    public static IFolder getScriptsFolder(IProject project, boolean forceCreate) throws CoreException
+    {
+    	if (project == null) {
+    		IStatus status = new Status(IStatus.ERROR, DBeaverCore.getCorePluginID(), "No active project to locate Script Folder");
+			throw new CoreException(status);
+		}
+        return DBeaverCore.getInstance().getProjectRegistry().getResourceDefaultRoot(project, ScriptsHandlerImpl.class, forceCreate);
+    }
+
+    @Nullable
+    public static ResourceInfo findRecentScript(IProject project, @Nullable DBPDataSourceContainer container) throws CoreException
+    {
+        List<ResourceInfo> scripts = new ArrayList<>();
+        findScriptList(getScriptsFolder(project, false), container, scripts);
+        long recentTimestamp = 0l;
+        ResourceInfo recentFile = null;
+        for (ResourceInfo file : scripts) {
+            if (file.localFile.lastModified() > recentTimestamp) {
+                recentTimestamp = file.localFile.lastModified();
+                recentFile = file;
+            }
+        }
+        return recentFile;
+    }
+
+    private static void findScriptList(IFolder folder, @Nullable DBPDataSourceContainer container, List<ResourceInfo> result)
+    {
+        try {
+            // Search in project scripts
+            for (IResource resource : folder.members()) {
+                if (resource instanceof IFile && SCRIPT_FILE_EXTENSION.equals(resource.getFileExtension())) {
+                    final DBPDataSourceContainer scriptDataSource = EditorUtils.getFileDataSource((IFile) resource);
+                    if (container == null || scriptDataSource == container) {
+                        result.add(new ResourceInfo((IFile) resource, scriptDataSource));
+                    }
+                } else if (resource instanceof IFolder) {
+                    findScriptList((IFolder) resource, container, result);
+                }
+            }
+            if (container != null) {
+                // Search in external files
+                for (Map.Entry<String, Map<String, Object>> fileEntry : DBeaverCore.getInstance().getExternalFileManager().getAllFiles().entrySet()) {
+                    if (container.getId().equals(fileEntry.getValue().get(EditorUtils.PROP_SQL_DATA_SOURCE))) {
+                        File extFile = new File(fileEntry.getKey());
+                        if (extFile.exists()) {
+                            result.add(new ResourceInfo(extFile, container));
+                        }
+                    }
+                }
+            }
+        } catch (CoreException e) {
+            log.debug(e.getMessage());
+        }
+    }
+
+    public static List<ResourceInfo> findScriptTree(IFolder folder, @Nullable DBPDataSourceContainer[] containers)
+    {
+        List<ResourceInfo> result = new ArrayList<>();
+        try {
+            for (IResource resource : folder.members()) {
+                if (resource instanceof IFile && SCRIPT_FILE_EXTENSION.equals(resource.getFileExtension())) {
+                    final DBPDataSourceContainer scriptDataSource = EditorUtils.getFileDataSource((IFile) resource);
+                    if (containers == null || ArrayUtils.containsRef(containers, scriptDataSource)) {
+                        result.add(new ResourceInfo((IFile) resource, scriptDataSource));
+                    }
+                } else if (resource instanceof IFolder) {
+                    final ResourceInfo folderInfo = new ResourceInfo((IFolder) resource);
+                    if (findChildScripts(folderInfo, containers)) {
+                        result.add(folderInfo);
+                    }
+                }
+            }
+            if (!ArrayUtils.isEmpty(containers)) {
+                // Search in external files
+                for (Map.Entry<String, Map<String, Object>> fileEntry : DBeaverCore.getInstance().getExternalFileManager().getAllFiles().entrySet()) {
+                    final Object fileContainerId = fileEntry.getValue().get(EditorUtils.PROP_SQL_DATA_SOURCE);
+                    if (fileContainerId != null) {
+                        File extFile = new File(fileEntry.getKey());
+                        if (extFile.exists()) {
+                            for (DBPDataSourceContainer container : containers) {
+                                if (container.getId().equals(fileContainerId)) {
+                                    result.add(new ResourceInfo(extFile, container));
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (CoreException e) {
+            log.debug(e);
+        }
+        return result;
+    }
+
+    private static boolean findChildScripts(ResourceInfo folder, @Nullable DBPDataSourceContainer[] containers) throws CoreException {
+        boolean hasScripts = false;
+        for (IResource resource : ((IFolder)folder.resource).members()) {
+            if (resource instanceof IFile && SCRIPT_FILE_EXTENSION.equals(resource.getFileExtension())) {
+                final DBPDataSourceContainer scriptDataSource = EditorUtils.getFileDataSource((IFile) resource);
+                if (containers == null || ArrayUtils.containsRef(containers, scriptDataSource)) {
+                    folder.children.add(new ResourceInfo((IFile) resource, scriptDataSource));
+                    hasScripts = true;
+                }
+            } else if (resource instanceof IFolder) {
+                final ResourceInfo folderInfo = new ResourceInfo((IFolder) resource);
+                if (findChildScripts(folderInfo, containers)) {
+                    folder.children.add(folderInfo);
+                    hasScripts = true;
+                }
+            }
+
+        }
+        return hasScripts;
+    }
+
+    public static IFile createNewScript(IProject project, @Nullable IFolder folder, @Nullable DBPDataSourceContainer dataSourceContainer) throws CoreException
+    {
+        final IProgressMonitor progressMonitor = new NullProgressMonitor();
+
+        // Get folder
+        IFolder scriptsFolder = folder;
+        if (scriptsFolder == null) {
+            scriptsFolder = getScriptsFolder(project, true);
+            if (dataSourceContainer != null && dataSourceContainer.getPreferenceStore().getBoolean(DBeaverPreferences.SCRIPT_AUTO_FOLDERS)) {
+                IFolder dbFolder = scriptsFolder.getFolder(CommonUtils.escapeFileName(dataSourceContainer.getName()));
+                if (dbFolder != null) {
+                    if (!dbFolder.exists()) {
+                        dbFolder.create(true, true, progressMonitor);
+                    }
+                    scriptsFolder = dbFolder;
+                }
+            }
+        }
+
+        // Make new script file
+        IFile tempFile = ContentUtils.getUniqueFile(scriptsFolder, "Script", SCRIPT_FILE_EXTENSION);
+        tempFile.create(new ByteArrayInputStream(new byte[]{}), true, progressMonitor);
+        //tempFile.setCharset(GeneralUtils.getDefaultFileEncoding(), progressMonitor);
+
+        // Save ds container reference
+        if (dataSourceContainer != null) {
+            EditorUtils.setFileDataSource(tempFile, dataSourceContainer);
+        }
+
+        return tempFile;
+    }
+
+}
