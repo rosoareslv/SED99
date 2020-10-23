@@ -1,0 +1,184 @@
+/*
+ * Copyright (c) 2002-2019 "Neo4j,"
+ * Neo4j Sweden AB [http://neo4j.com]
+ *
+ * This file is part of Neo4j.
+ *
+ * Neo4j is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ */
+package org.neo4j.kernel.impl.transaction;
+
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+
+import java.io.IOException;
+
+import org.neo4j.graphdb.Label;
+import org.neo4j.graphdb.Node;
+import org.neo4j.graphdb.PropertyContainer;
+import org.neo4j.graphdb.Relationship;
+import org.neo4j.graphdb.Transaction;
+import org.neo4j.internal.helpers.collection.Iterables;
+import org.neo4j.io.fs.FileSystemAbstraction;
+import org.neo4j.kernel.impl.MyRelTypes;
+import org.neo4j.kernel.impl.transaction.log.entry.LogEntry;
+import org.neo4j.kernel.impl.transaction.log.files.LogFiles;
+import org.neo4j.kernel.internal.GraphDatabaseAPI;
+import org.neo4j.test.LogTestUtils.CountingLogHook;
+import org.neo4j.test.extension.ImpermanentDbmsExtension;
+import org.neo4j.test.extension.Inject;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.neo4j.graphdb.Label.label;
+import static org.neo4j.test.LogTestUtils.filterNeostoreLogicalLog;
+
+/**
+ * Asserts that pure read operations does not write records to logical or transaction logs.
+ */
+@ImpermanentDbmsExtension
+class ReadTransactionLogWritingTest
+{
+    @Inject
+    private GraphDatabaseAPI db;
+
+    private final Label label = label( "Test" );
+    private Node node;
+    private Relationship relationship;
+    private long logEntriesWrittenBeforeReadOperations;
+
+    @BeforeEach
+    void createDataset()
+    {
+        try ( Transaction tx = db.beginTx() )
+        {
+            node = db.createNode( label );
+            node.setProperty( "short", 123 );
+            node.setProperty( "long", longString( 300 ) );
+            relationship = node.createRelationshipTo( db.createNode(), MyRelTypes.TEST );
+            relationship.setProperty( "short", 123 );
+            relationship.setProperty( "long", longString( 300 ) );
+            tx.commit();
+        }
+        logEntriesWrittenBeforeReadOperations = countLogEntries();
+    }
+
+    @Test
+    void shouldNotWriteAnyLogCommandInPureReadTransaction()
+    {
+        // WHEN
+        executeTransaction( getRelationships() );
+        executeTransaction( getProperties() );
+        executeTransaction( getById() );
+        executeTransaction( getNodesFromRelationship() );
+
+        // THEN
+        long actualCount = countLogEntries();
+        assertEquals( logEntriesWrittenBeforeReadOperations,
+                actualCount, "There were " + (actualCount - logEntriesWrittenBeforeReadOperations) +
+                                " log entries written during one or more pure read transactions" );
+    }
+
+    private long countLogEntries()
+    {
+        FileSystemAbstraction fs = db.getDependencyResolver().resolveDependency( FileSystemAbstraction.class );
+        LogFiles logFiles = db.getDependencyResolver().resolveDependency( LogFiles.class );
+        try
+        {
+            CountingLogHook<LogEntry> logicalLogCounter = new CountingLogHook<>();
+            filterNeostoreLogicalLog( logFiles, fs, logicalLogCounter );
+
+            long txLogRecordCount = logFiles.getLogFileInformation().getLastEntryId();
+
+            return logicalLogCounter.getCount() + txLogRecordCount;
+        }
+        catch ( IOException e )
+        {
+            throw new RuntimeException( e );
+        }
+    }
+
+    private String longString( int length )
+    {
+        char[] characters = new char[length];
+        for ( int i = 0; i < length; i++ )
+        {
+            characters[i] = (char) ('a' + i % 10);
+        }
+        return new String( characters );
+    }
+
+    private void executeTransaction( Runnable runnable )
+    {
+        executeTransaction( runnable, true );
+        executeTransaction( runnable, false );
+    }
+
+    private void executeTransaction( Runnable runnable, boolean success )
+    {
+        try ( Transaction tx = db.beginTx() )
+        {
+            runnable.run();
+            if ( success )
+            {
+                tx.commit();
+            }
+        }
+    }
+
+    private Runnable getRelationships()
+    {
+        return () -> assertEquals( 1, Iterables.count( node.getRelationships() ) );
+    }
+
+    private Runnable getNodesFromRelationship()
+    {
+        return () ->
+        {
+            relationship.getEndNode();
+            relationship.getStartNode();
+            relationship.getNodes();
+            relationship.getOtherNode( node );
+        };
+    }
+
+    private Runnable getById()
+    {
+        return () ->
+        {
+            db.getNodeById( node.getId() );
+            db.getRelationshipById( relationship.getId() );
+        };
+    }
+
+    private Runnable getProperties()
+    {
+        return new Runnable()
+        {
+            @Override
+            public void run()
+            {
+                getAllProperties( node );
+                getAllProperties( relationship );
+            }
+
+            private void getAllProperties( PropertyContainer entity )
+            {
+                for ( String key : entity.getPropertyKeys() )
+                {
+                    entity.getProperty( key );
+                }
+            }
+        };
+    }
+}
