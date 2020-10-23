@@ -1,0 +1,130 @@
+/*
+ * SonarQube
+ * Copyright (C) 2009-2016 SonarSource SA
+ * mailto:contact AT sonarsource DOT com
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU Lesser General Public
+ * License as published by the Free Software Foundation; either
+ * version 3 of the License, or (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+ * Lesser General Public License for more details.
+ *
+ * You should have received a copy of the GNU Lesser General Public License
+ * along with this program; if not, write to the Free Software Foundation,
+ * Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
+ */
+package it.qualityModel;
+
+import com.sonar.orchestrator.Orchestrator;
+import com.sonar.orchestrator.locator.FileLocation;
+import it.Category2Suite;
+import java.util.Date;
+import java.util.List;
+import javax.annotation.Nullable;
+import org.junit.AfterClass;
+import org.junit.Before;
+import org.junit.ClassRule;
+import org.junit.Test;
+import org.sonar.wsclient.services.Measure;
+import org.sonar.wsclient.services.Resource;
+import org.sonar.wsclient.services.ResourceQuery;
+import util.ItUtils;
+
+import static org.apache.commons.lang.time.DateUtils.addDays;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.within;
+import static util.ItUtils.formatDate;
+import static util.ItUtils.resetPeriods;
+import static util.ItUtils.setServerProperty;
+import static util.ItUtils.toDate;
+
+/**
+ * SONAR-5876
+ */
+public class NewDebtRatioMeasureTest {
+
+  private static final String NEW_DEBT_RATIO_METRIC_KEY = "new_sqale_debt_ratio";
+
+  private static final Date FIRST_COMMIT_DATE = toDate("2016-09-01");
+  private static final Date SECOND_COMMIT_DATE = toDate("2016-09-17");
+  private static final Date THIRD_COMMIT_DATE = toDate("2016-09-20");
+
+  @ClassRule
+  public static Orchestrator orchestrator = Category2Suite.ORCHESTRATOR;
+
+  @AfterClass
+  public static void reset() throws Exception {
+    resetPeriods(orchestrator);
+  }
+
+  @Before
+  public void cleanUpAnalysisData() {
+    orchestrator.resetData();
+  }
+
+  @Test
+  public void new_debt_ratio_is_computed_from_new_debt_and_new_ncloc_count_per_file() throws Exception {
+    setServerProperty(orchestrator, "sonar.timemachine.period1", "previous_analysis");
+    setServerProperty(orchestrator, "sonar.timemachine.period2", "30");
+
+    // run analysis on the day of after the first commit, with 'one-issue-per-line' profile
+    defineQualityProfile("one-issue-per-line");
+    provisionSampleProject();
+    setSampleProjectQualityProfile("one-issue-per-line");
+    runSampleProjectAnalysis("v1", "sonar.projectDate", formatDate(addDays(FIRST_COMMIT_DATE, 1)));
+
+    // first analysis, no previous snapshot => periods not resolved => no value
+    assertNoNewDebtRatio();
+
+    // run analysis on the day after of second commit 'one-issue-per-line' profile*
+    // => 3 new issues will be created
+    runSampleProjectAnalysis("v2", "sonar.projectDate", formatDate(addDays(SECOND_COMMIT_DATE, 1)));
+    assertNewDebtRatio(4.44, 4.44);
+
+    // run analysis on the day after of third commit 'one-issue-per-line' profile*
+    // => 4 new issues will be created
+    runSampleProjectAnalysis("v3", "sonar.projectDate", formatDate(addDays(THIRD_COMMIT_DATE, 1)));
+    assertNewDebtRatio(4.17, 4.28);
+  }
+
+  private void assertNoNewDebtRatio() {
+    assertThat(getFileResourceWithVariations(NEW_DEBT_RATIO_METRIC_KEY)).isNull();
+  }
+
+  private void assertNewDebtRatio(@Nullable Double valuePeriod1, @Nullable Double valuePeriod2) {
+    Resource newTechnicalDebt = getFileResourceWithVariations(NEW_DEBT_RATIO_METRIC_KEY);
+    List<Measure> measures = newTechnicalDebt.getMeasures();
+    assertThat(measures.get(0).getVariation1()).isEqualTo(valuePeriod1, within(0.01));
+    assertThat(measures.get(0).getVariation2()).isEqualTo(valuePeriod2, within(0.01));
+  }
+
+  private void setSampleProjectQualityProfile(String qualityProfileKey) {
+    orchestrator.getServer().associateProjectToQualityProfile("sample", "xoo", qualityProfileKey);
+  }
+
+  private void provisionSampleProject() {
+    orchestrator.getServer().provisionProject("sample", "sample");
+  }
+
+  private void defineQualityProfile(String qualityProfileKey) {
+    orchestrator.getServer().restoreProfile(FileLocation.ofClasspath("/measure/" + qualityProfileKey + ".xml"));
+  }
+
+  private void runSampleProjectAnalysis(String projectVersion, String... properties) {
+    ItUtils.runVerboseProjectAnalysis(
+      NewDebtRatioMeasureTest.orchestrator,
+      "measure/xoo-new-debt-ratio-" + projectVersion,
+      ItUtils.concat(properties,
+        // disable standard scm support so that it does not interfere with Xoo Scm sensor
+        "sonar.scm.disabled", "false"));
+  }
+
+  private Resource getFileResourceWithVariations(String metricKey) {
+    return orchestrator.getServer().getWsClient().find(ResourceQuery.createForMetrics("sample:src/main/xoo/sample/Sample.xoo", metricKey).setIncludeTrends(true));
+  }
+
+}
