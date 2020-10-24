@@ -1,0 +1,15 @@
+import pytest
+
+import falcon
+
+try:
+    import cython
+except ImportError:
+    cython = None
+
+
+class TestCythonized:
+
+    @pytest.mark.skipif(not cython, reason='Cython not installed')
+    def test_imported_from_c_modules(self):
+        assert 'falcon/app.py' not in str(falcon.app)
