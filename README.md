@@ -1,5 +1,5 @@
-# dataset
-A Dataset to permit others to continue exploring the Evolution of Software throught new Empirical Studies
+# SED99 - Software Evolution Dataset / 99 repositories
+SED99 (Software Evolution Dataset about 99 repositories) is a dataset to permit others to continue exploring the Evolution of Software throught new Empirical Studies
 
 
 ## Source File Extensions
