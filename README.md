@@ -46,3 +46,6 @@ SED99 (Software Evolution Dataset about 99 repositories) is a dataset to permit 
 | [TrinityCore](https://github.com/TrinityCore/TrinityCore.git) | [spring-framework](https://github.com/spring-projects/spring-framework.git) |     [youtube-dl](https://github.com/ytdl-org/youtube-dl.git)     |
 |            [xbmc](https://github.com/xbmc/xbmc.git)           |                 [zxing](https://github.com/zxing/zxing.git)                 |            [zulip](https://github.com/zulip/zulip.git)           |
 
+## License
+
+This project is under [MIT License](https://github.com/rosoareslv/SED99/blob/main/LICENSE)
