@@ -46,6 +46,6 @@ SED99 is my final course work, with the objective of promoting studies in the ar
 | [TrinityCore](https://github.com/TrinityCore/TrinityCore.git) | [spring-framework](https://github.com/spring-projects/spring-framework.git) |     [youtube-dl](https://github.com/ytdl-org/youtube-dl.git)     |
 |            [xbmc](https://github.com/xbmc/xbmc.git)           |                 [zxing](https://github.com/zxing/zxing.git)                 |            [zulip](https://github.com/zulip/zulip.git)           |
 
-###License
+### License
 
 This project is undet MIT License
