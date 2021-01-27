@@ -48,4 +48,4 @@ SED99 is my final course work, with the objective of promoting studies in the ar
 
 ### License
 
-This project is undet MIT License
+This project is under MIT License
