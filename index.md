@@ -1,6 +1,6 @@
 ## Welcome to the SED99 project!
 
-SED99 is my final course work, with the objective of promoting studies in the area of Sofwtare Evolution in its various aspects, with the coverage of 15 moments of the software life cycle, spread over a period of 5 years (2015 - 2019) in four-month periods. The projects have varied objectives, actions, relevance and magnitudes to heterogenize SED99 and make its application generic in different contexts. I hope you enjoy!
+SED99 is my final course work, with the objective of promoting studies in the area of Software Evolution in its various aspects, with the coverage of 15 moments of the software life cycle, spread over a period of 5 years (2015 - 2019) in four-month periods. The projects have varied objectives, actions, relevance and magnitudes to heterogenize SED99 and make its application generic in different contexts. I hope you enjoy!
 
 ### Source File Extensions
 
