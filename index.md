@@ -1,10 +1,16 @@
 ## Welcome to the SED99 project!
 
-SED99 is my final course work, with the objective of promoting studies in the area of Software Evolution in its various aspects, with the coverage of 15 moments of the software life cycle, spread over a period of 5 years (2015 - 2019) in four-month periods. The projects have varied objectives, actions, relevance and magnitudes to heterogenize SED99 and make its application generic in different contexts. I hope you enjoy!
+SED99 is my final project at the Catholic University of Salvador (UCSAL), with the objective of promoting studies in the area of Software Evolution in its various aspects, covering 15 moments of the software life cycle, divided for a period of 5 years (2015 - 2019) in four periods of one month. The Open Source projects chosen have varied objectives, actions, relevance and magnitudes to heterogenize SED99 and make its application generic in different contexts. Hope you like!
 
-### Source File Extensions
+### Who is involved with SED99?
 
-|          C++         |  Java   |  Python |
+- Author: [Rodrigo Soares da Silva](https://github.com/rosoareslv)
+- Monograph guidance: [André Brasil Vieira Wyzykowski](https://github.com/andrewyzy)
+- University: [Universidade Católica do Salvador (UCSAL)](https://www.ucsal.br/)
+
+### Programming Languages and Source File Extensions
+
+|          C++         |  Java   | Python  |
 |----------------------|---------|---------|
 | "cpp",".cc" and ".h" | ".java" |  ".py"  |
 
@@ -48,4 +54,4 @@ SED99 is my final course work, with the objective of promoting studies in the ar
 
 ### License
 
-This project is under MIT License
+This project is under [MIT License](./LICENSE)
