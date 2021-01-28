@@ -1,12 +1,12 @@
 ## Welcome to the SED99 project!
 
-###What is it?
+### What is it?
 
-SED99 is a dataset with the objective of promoting studies in the area of Software Evolution in its various aspects, with theses characteristics:
+SED99 is a dataset with the objective of promoting studies in the area of Software Evolution in its various aspects, with these characteristics:
 
 - To cover 15 moments of a Open Source project life cycle, divided for a period of 5 years (2015 - 2019) quarterly (until last commit in April, August and December)
-- With varied Open Source project's magnitudes (size, LOC, software objective, etc) to heterogenize SED99 
-- Generic application not only in the area of Software Evolution
+- With varied Open Source project's magnitudes (size, LOC, software objective, etc) to heterogenize the dataset
+- Generic application not only in the area of Software Evolution, but IA, data mining, etc.
 
 ### How to access
 
@@ -18,13 +18,15 @@ On the left there is an option to see the project on Github and It will take you
 - Monograph guidance: [André Brasil Vieira Wyzykowski](https://github.com/andrewyzy)
 - University: [Universidade Católica do Salvador (UCSAL)](https://www.ucsal.br/)
 
-### Programming Languages and Source File Extensions
+### More info
+
+#### Programming Languages and Source File Extensions
 
 |          C++         |  Java   | Python  |
 |----------------------|---------|---------|
 | "cpp",".cc" and ".h" | ".java" |  ".py"  |
 
-### Selected Repositories
+#### Selected Repositories
 
 |                              C++                              |                                     Java                                    |                              Python                              |
 |:-------------------------------------------------------------:|:---------------------------------------------------------------------------:|:----------------------------------------------------------------:|
@@ -62,6 +64,6 @@ On the left there is an option to see the project on Github and It will take you
 | [TrinityCore](https://github.com/TrinityCore/TrinityCore.git) | [spring-framework](https://github.com/spring-projects/spring-framework.git) |     [youtube-dl](https://github.com/ytdl-org/youtube-dl.git)     |
 |            [xbmc](https://github.com/xbmc/xbmc.git)           |                 [zxing](https://github.com/zxing/zxing.git)                 |            [zulip](https://github.com/zulip/zulip.git)           |
 
-### License
+#### License
 
 This project is under [MIT License](./LICENSE)
