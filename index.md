@@ -1,6 +1,16 @@
 ## Welcome to the SED99 project!
 
-SED99 is my final project at the Catholic University of Salvador (UCSAL), with the objective of promoting studies in the area of Software Evolution in its various aspects, covering 15 moments of the software life cycle, divided for a period of 5 years (2015 - 2019) in four periods of one month. The Open Source projects chosen have varied objectives, actions, relevance and magnitudes to heterogenize SED99 and make its application generic in different contexts. Hope you like!
+###What is it?
+
+SED99 is a dataset with the objective of promoting studies in the area of Software Evolution in its various aspects, with theses characteristics:
+
+- To cover 15 moments of a Open Source project life cycle, divided for a period of 5 years (2015 - 2019) quarterly (until last commit in April, August and December)
+- With varied Open Source project's magnitudes (size, LOC, software objective, etc) to heterogenize SED99 
+- Generic application not only in the area of Software Evolution
+
+### How to access
+
+On the left there is an option to see the project on Github and It will take you the right place!
 
 ### Who is involved with SED99?
 
